@@ -40,24 +40,16 @@ class Root {
     return this.numberHolder;
   }
 
-  promiseToChangeTheNumber(newNumber: number): Promise<Object> {
-    return new Promise(resolve => {
-      process.nextTick(() => {
-        resolve(this.immediatelyChangeTheNumber(newNumber));
-      });
-    });
+  promiseToChangeTheNumber(newNumber: number): Object {
+    return this.immediatelyChangeTheNumber(newNumber);
   }
 
   failToChangeTheNumber(): Object {
     throw new Error('Cannot change the number');
   }
 
-  promiseAndFailToChangeTheNumber(): Promise<Object> {
-    return new Promise((resolve, reject) => {
-      process.nextTick(() => {
-        reject(new Error('Cannot change the number'));
-      });
-    });
+  promiseAndFailToChangeTheNumber(): Object {
+    throw new Error('Cannot change the number');
   }
 }
 

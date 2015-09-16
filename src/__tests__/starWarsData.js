@@ -84,8 +84,7 @@ var droidData = {
  * Helper function to get a character by ID.
  */
 function getCharacter(id) {
-  // Returning a promise just to illustrate GraphQL.js's support.
-  return Promise.resolve(humanData[id] || droidData[id]);
+  return humanData[id] || droidData[id];
 }
 
 /**

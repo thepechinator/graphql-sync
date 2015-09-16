@@ -23,10 +23,8 @@ import {
   GraphQLNonNull
 } from '../../type';
 
-// resolved() is shorthand for Promise.resolve()
-var resolved = Promise.resolve.bind(Promise);
-// rejected() is shorthand for Promise.reject()
-var rejected = Promise.reject.bind(Promise);
+var resolved = x => x;
+var rejected = x => {throw x;};
 
 /**
  * This function creates a test case passed to "it", there's a time delay
@@ -35,7 +33,7 @@ var rejected = Promise.reject.bind(Promise);
  * rejection so as not to trigger the "unhandled rejection" error watcher.
  */
 function check(testType, testData, expected) {
-  return async () => {
+  return () => {
     var data = { test: testData };
 
     var dataType = new GraphQLObjectType({
@@ -50,7 +48,7 @@ function check(testType, testData, expected) {
 
     var ast = parse('{ nest { test } }');
 
-    var response = await execute(schema, ast, data);
+    var response = execute(schema, ast, data);
     // Formatting errors for ease of test writing.
     var result = response.errors;
     if (response.errors) {
@@ -89,7 +87,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Promise<Array<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         resolved([ 1, 2 ]),
@@ -118,7 +116,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Array<Promise<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         [ resolved(1), resolved(2) ],
@@ -128,15 +126,6 @@ describe('Execute: Handles list nullability', () => {
       it('Contains null', check(type,
         [ resolved(1), resolved(null), resolved(2) ],
         { data: { nest: { test: [ 1, null, 2 ] } } }
-      ));
-
-      it('Contains reject', check(type,
-        () => [ resolved(1), rejected(new Error('bad')), resolved(2) ],
-        { data: { nest: { test: [ 1, null, 2 ] } },
-          errors: [
-            { message: 'bad',
-              locations: [ { line: 1, column: 10 } ] }
-          ] }
       ));
 
     });
@@ -169,7 +158,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Promise<Array<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         resolved([ 1, 2 ]),
@@ -201,7 +190,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Array<Promise<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         [ resolved(1), resolved(2) ],
@@ -211,15 +200,6 @@ describe('Execute: Handles list nullability', () => {
       it('Contains null', check(type,
         [ resolved(1), resolved(null), resolved(2) ],
         { data: { nest: { test: [ 1, null, 2 ] } } }
-      ));
-
-      it('Contains reject', check(type,
-        () => [ resolved(1), rejected(new Error('bad')), resolved(2) ],
-        { data: { nest: { test: [ 1, null, 2 ] } },
-          errors: [
-            { message: 'bad',
-              locations: [ { line: 1, column: 10 } ] }
-          ] }
       ));
 
     });
@@ -252,7 +232,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Promise<Array<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         resolved([ 1, 2 ]),
@@ -284,7 +264,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Array<Promise<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         [ resolved(1), resolved(2) ],
@@ -345,7 +325,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Promise<Array<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         resolved([ 1, 2 ]),
@@ -381,7 +361,7 @@ describe('Execute: Handles list nullability', () => {
 
     });
 
-    describe('Array<Promise<T>>', () => {
+    describe('Array<T>', () => {
 
       it('Contains values', check(type,
         [ resolved(1), resolved(2) ],
