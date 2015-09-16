@@ -16,7 +16,7 @@ through that README and the corresponding tests in parallel.
 Install GraphQL-sync from npm
 
 ```sh
-npm install --save graphql
+npm install --save graphql-sync
 ```
 
 GraphQL-sync provides two important capabilities: building a type schema, and
@@ -30,7 +30,7 @@ import {
   GraphQLSchema,
   GraphQLObjectType,
   GraphQLString
-} from 'graphql';
+} from 'graphql-sync';
 
 var schema = new GraphQLSchema({
   query: new GraphQLObjectType({
@@ -84,5 +84,5 @@ console.log(result);
 
 ### License
 
-GraphQL is [BSD-licensed](https://github.com/graphql/graphql-sync/blob/master/LICENSE).
-Facebook also provides an additional [patent grant](https://github.com/graphql/graphql-sync/blob/master/PATENTS).
+GraphQL is [BSD-licensed](https://github.com/arangodb/graphql-sync/blob/master/LICENSE).
+Facebook also provides an additional [patent grant](https://github.com/arangodb/graphql-sync/blob/master/PATENTS).
