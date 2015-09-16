@@ -32,9 +32,6 @@
     "preversion": ". ./resources/checkgit.sh && npm test",
     "prepublish": ". ./resources/prepublish.sh"
   },
-  "dependencies": {
-    "babel-runtime": "^5.8.x"
-  },
   "devDependencies": {
     "babel": "5.8.21",
     "babel-core": "5.8.22",
