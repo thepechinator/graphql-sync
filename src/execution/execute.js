@@ -98,8 +98,6 @@ type ExecutionResult = {
 /**
  * Implements the "Evaluating requests" section of the GraphQL specification.
  *
- * Returns a Promise that will eventually be resolved and never rejected.
- *
  * If the arguments to this function do not result in a legal execution context,
  * a GraphQLError will be thrown immediately explaining the invalid input.
  */
@@ -109,7 +107,7 @@ export function execute(
   rootValue?: any,
   variableValues?: ?{[key: string]: any},
   operationName?: ?string
-): Promise<ExecutionResult> {
+): ExecutionResult {
   invariant(schema, 'Must provide schema');
   invariant(
     schema instanceof GraphQLSchema,
@@ -127,27 +125,27 @@ export function execute(
     operationName
   );
 
-  // Return a Promise that will eventually resolve to the data described by
+  // Return the data described by
   // The "Response" section of the GraphQL specification.
   //
   // If errors are encountered while executing a GraphQL field, only that
   // field and it's descendents will be omitted, and sibling fields will still
   // be executed. An execution which encounters errors will still result in a
-  // resolved Promise.
-  return new Promise(resolve => {
-    resolve(executeOperation(context, context.operation, rootValue));
-  }).catch(error => {
+  // return value.
+  var data;
+  try {
+    data = executeOperation(context, context.operation, rootValue);
+  } catch (error) {
     // Errors from sub-fields of a NonNull type may propagate to the top level,
     // at which point we still log the error and null the parent field, which
     // in this case is the entire response.
     context.errors.push(error);
-    return null;
-  }).then(data => {
-    if (!context.errors.length) {
-      return { data };
-    }
-    return { data, errors: context.errors };
-  });
+    data = null;
+  }
+  if (!context.errors.length) {
+    return { data };
+  }
+  return { data, errors: context.errors };
 }
 
 /**
@@ -252,24 +250,18 @@ function executeFieldsSerially(
   parentType: GraphQLObjectType,
   sourceValue: any,
   fields: {[key: string]: Array<Field>}
-): Promise<Object> {
+): Object {
   return Object.keys(fields).reduce(
-    (prevPromise, responseName) => prevPromise.then(results => {
+    (results, responseName) => {
       var fieldASTs = fields[responseName];
       var result = resolveField(exeContext, parentType, sourceValue, fieldASTs);
       if (result === undefined) {
         return results;
       }
-      if (isThenable(result)) {
-        return result.then(resolvedResult => {
-          results[responseName] = resolvedResult;
-          return results;
-        });
-      }
       results[responseName] = result;
       return results;
-    }),
-    Promise.resolve({})
+    },
+    {}
   );
 }
 
@@ -283,8 +275,6 @@ function executeFields(
   sourceValue: any,
   fields: {[key: string]: Array<Field>}
 ): Object {
-  var containsPromise = false;
-
   var finalResults = Object.keys(fields).reduce(
     (results, responseName) => {
       var fieldASTs = fields[responseName];
@@ -293,24 +283,12 @@ function executeFields(
         return results;
       }
       results[responseName] = result;
-      if (isThenable(result)) {
-        containsPromise = true;
-      }
       return results;
     },
     {}
   );
 
-  // If there are no promises, we can just return the object
-  if (!containsPromise) {
-    return finalResults;
-  }
-
-  // Otherwise, results is a map from field name to the result
-  // of resolving that field, which is possibly a promise. Return
-  // a promise that will return this same map, but with any
-  // promises replaced with the values they resolved to.
-  return promiseForObject(finalResults);
+  return finalResults;
 }
 
 /**
@@ -436,26 +414,6 @@ function doesFragmentConditionMatch(
 }
 
 /**
- * This function transforms a JS object `{[key: string]: Promise<any>}` into
- * a `Promise<{[key: string]: any}>`
- *
- * This is akin to bluebird's `Promise.props`, but implemented only using
- * `Promise.all` so it will work with any implementation of ES6 promises.
- */
-function promiseForObject(
-  object: {[key: string]: Promise<any>}
-): Promise<{[key: string]: any}> {
-  var keys = Object.keys(object);
-  var valuesAndPromises = keys.map(name => object[name]);
-  return Promise.all(valuesAndPromises).then(
-    values => values.reduce((resolvedObject, value, i) => {
-      resolvedObject[keys[i]] = value;
-      return resolvedObject;
-    }, {})
-  );
-}
-
-/**
  * Implements the logic to compute the key of a given field’s entry
  */
 function getFieldEntryKey(node: Field): string {
@@ -465,7 +423,7 @@ function getFieldEntryKey(node: Field): string {
 /**
  * Resolves the field on the given source object. In particular, this
  * figures out the value that the field returns by calling its resolve function,
- * then calls completeValue to complete promises, serialize scalars, or execute
+ * then calls completeValue to serialize scalars, or execute
  * the sub-selection-set for objects.
  */
 function resolveField(
@@ -555,14 +513,6 @@ function completeValueCatchingError(
       info,
       result
     );
-    if (isThenable(completed)) {
-      // Note: we don't rely on a `catch` method, but we do expect "thenable"
-      // to take a second callback for the error case.
-      return completed.then(undefined, error => {
-        exeContext.errors.push(error);
-        return Promise.resolve(null);
-      });
-    }
     return completed;
   } catch (error) {
     exeContext.errors.push(error);
@@ -595,21 +545,6 @@ function completeValue(
   info: GraphQLResolveInfo,
   result: any
 ): any {
-  // If result is a Promise, resolve it, if the Promise is rejected, construct
-  // a GraphQLError with proper locations.
-  if (isThenable(result)) {
-    return result.then(
-      resolved => completeValue(
-        exeContext,
-        returnType,
-        fieldASTs,
-        info,
-        resolved
-      ),
-      error => Promise.reject(locatedError(error, fieldASTs))
-    );
-  }
-
   // If field type is NonNull, complete for inner type, and throw field error
   // if result is null.
   if (returnType instanceof GraphQLNonNull) {
@@ -642,20 +577,15 @@ function completeValue(
       'User Error: expected iterable, but did not find one.'
     );
 
-    // This is specified as a simple map, however we're optimizing the path
-    // where the list contains no Promises by avoiding creating another Promise.
+    // This is specified as a simple map.
     var itemType = returnType.ofType;
-    var containsPromise = false;
     var completedResults = result.map(item => {
       var completedItem =
         completeValueCatchingError(exeContext, itemType, fieldASTs, info, item);
-      if (!containsPromise && isThenable(completedItem)) {
-        containsPromise = true;
-      }
       return completedItem;
     });
 
-    return containsPromise ? Promise.all(completedResults) : completedResults;
+    return completedResults;
   }
 
   // If field type is Scalar or Enum, serialize to a valid value, returning
@@ -726,14 +656,6 @@ function completeValue(
 function defaultResolveFn(source, args, { fieldName }) {
   var property = source[fieldName];
   return typeof property === 'function' ? property.call(source) : property;
-}
-
-/**
- * Checks to see if this object acts like a Promise, i.e. has a "then"
- * function.
- */
-function isThenable(value: any): boolean {
-  return value && typeof value === 'object' && typeof value.then === 'function';
 }
 
 /**

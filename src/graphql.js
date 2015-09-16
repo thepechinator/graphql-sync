@@ -31,27 +31,24 @@ export function graphql(
   rootValue?: ?any,
   variableValues?: ?{[key: string]: any},
   operationName?: ?string
-): Promise<GraphQLResult> {
-  return new Promise(resolve => {
+): GraphQLResult {
+  try {
     var source = new Source(requestString || '', 'GraphQL request');
     var documentAST = parse(source);
     var validationErrors = validate(schema, documentAST);
     if (validationErrors.length > 0) {
-      resolve({ errors: validationErrors });
-    } else {
-      resolve(
-        execute(
-          schema,
-          documentAST,
-          rootValue,
-          variableValues,
-          operationName
-        )
-      );
+      return { errors: validationErrors };
     }
-  }).catch(error => {
+    return execute(
+      schema,
+      documentAST,
+      rootValue,
+      variableValues,
+      operationName
+    );
+  } catch (error) {
     return { errors: [ error ] };
-  });
+  }
 }
 
 /**
