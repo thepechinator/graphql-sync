@@ -1,6 +1,6 @@
 # GraphQL-sync
 
-This is a fork of [GraphQL.js](https://github.com/graphql/graphql-js) that replaces all asynchronous code with synchronous equivalents.
+This is a fork of [GraphQL.js](https://github.com/graphql/graphql-js) for [ArangoDB](https://www.arangodb.com) that replaces all asynchronous code with synchronous equivalents.
 
 ## Getting Started
 
@@ -82,12 +82,7 @@ var result = graphql(schema, query);
 console.log(result);
 ```
 
-### Contributing
-
-We actively welcome pull requests, learn how to
-[contribute](https://github.com/graphql/graphql-js/blob/master/CONTRIBUTING.md).
-
 ### License
 
-GraphQL is [BSD-licensed](https://github.com/graphql/graphql-js/blob/master/LICENSE).
-We also provide an additional [patent grant](https://github.com/graphql/graphql-js/blob/master/PATENTS).
+GraphQL is [BSD-licensed](https://github.com/graphql/graphql-sync/blob/master/LICENSE).
+Facebook also provides an additional [patent grant](https://github.com/graphql/graphql-sync/blob/master/PATENTS).
