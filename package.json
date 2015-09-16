@@ -1,6 +1,6 @@
 {
   "name": "graphql-sync",
-  "version": "0.4.4",
+  "version": "0.4.4-sync.1",
   "description": "Synchronous fork of GraphQL-js.",
   "contributors": [
     "Alan Plum <me@pluma.io>",
