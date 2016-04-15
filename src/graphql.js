@@ -28,14 +28,15 @@ import type { GraphQLSchema } from 'graphql/type/schema';
 export function graphql(
   schema: GraphQLSchema,
   requestString: string,
-  rootValue?: ?any,
-  variableValues?: ?{[key: string]: any},
+  rootValue?: mixed,
+  contextValue?: mixed,
+  variableValues?: ?{[key: string]: mixed},
   operationName?: ?string
 ): GraphQLResult {
   try {
-    var source = new Source(requestString || '', 'GraphQL request');
-    var documentAST = parse(source);
-    var validationErrors = validate(schema, documentAST);
+    const source = new Source(requestString || '', 'GraphQL request');
+    const documentAST = parse(source);
+    const validationErrors = validate(schema, documentAST);
     if (validationErrors.length > 0) {
       return { errors: validationErrors };
     }
@@ -43,6 +44,7 @@ export function graphql(
       schema,
       documentAST,
       rootValue,
+      contextValue,
       variableValues,
       operationName
     );
