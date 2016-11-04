@@ -1,6 +1,6 @@
 {
   "name": "graphql-sync",
-  "version": "0.6.2-sync-dev",
+  "version": "0.6.2-sync",
   "description": "Promise-free wrapper for GraphQL.",
   "main": "lib/index.js",
   "files": [
