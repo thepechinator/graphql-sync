@@ -8,6 +8,8 @@
  *  of patent rights can be found in the PATENTS file in the same directory.
  */
 
+import { forEach, isCollection } from 'iterall';
+
 import { GraphQLError } from 'graphql/error';
 import invariant from 'graphql/jsutils/invariant';
 import isNullish from 'graphql/jsutils/isNullish';
@@ -54,7 +56,7 @@ export function getVariableValues(
 export function getArgumentValues(
   argDefs: ?Array<GraphQLArgument>,
   argASTs: ?Array<Argument>,
-  variableValues: { [key: string]: mixed }
+  variableValues?: ?{ [key: string]: mixed }
 ): { [key: string]: mixed } {
   if (!argDefs || !argASTs) {
     return {};
@@ -138,9 +140,12 @@ function coerceValue(type: GraphQLInputType, value: mixed): mixed {
 
   if (type instanceof GraphQLList) {
     const itemType = type.ofType;
-    // TODO: support iterable input
-    if (Array.isArray(_value)) {
-      return _value.map(item => coerceValue(itemType, item));
+    if (isCollection(_value)) {
+      const coercedValues = [];
+      forEach((_value: any), item => {
+        coercedValues.push(coerceValue(itemType, item));
+      });
+      return coercedValues;
     }
     return [ coerceValue(itemType, _value) ];
   }
