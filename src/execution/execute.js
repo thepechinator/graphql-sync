@@ -15,7 +15,7 @@ import find from 'graphql/jsutils/find';
 import invariant from 'graphql/jsutils/invariant';
 import isNullish from 'graphql/jsutils/isNullish';
 import { typeFromAST } from 'graphql/utilities/typeFromAST';
-import { Kind } from 'graphql/language';
+import * as Kind from 'graphql/language/kinds';
 import { getVariableValues, getArgumentValues } from './values';
 import {
   GraphQLScalarType,
@@ -90,7 +90,7 @@ type ExecutionContext = {
   operation: OperationDefinition;
   variableValues: {[key: string]: mixed};
   errors: Array<GraphQLError>;
-}
+};
 
 /**
  * The result of execution. `data` is the result of executing the
@@ -100,10 +100,12 @@ type ExecutionContext = {
 type ExecutionResult = {
   data: ?Object;
   errors?: Array<GraphQLError>;
-}
+};
 
 /**
  * Implements the "Evaluating requests" section of the GraphQL specification.
+ *
+ * Returns a Promise that will eventually be resolved and never rejected.
  *
  * If the arguments to this function do not result in a legal execution context,
  * a GraphQLError will be thrown immediately explaining the invalid input.
@@ -121,6 +123,14 @@ export function execute(
     schema instanceof GraphQLSchema,
     'Schema must be an instance of GraphQLSchema. Also ensure that there are ' +
     'not multiple versions of GraphQL installed in your node_modules directory.'
+  );
+
+  // Variables, if provided, must be an object.
+  invariant(
+    !variableValues || typeof variableValues === 'object',
+    'Variables must be provided as an Object where each property is a ' +
+    'variable value. Perhaps look to see if an unparsed JSON string ' +
+    'was provided.'
   );
 
   // If a valid context cannot be created due to incorrect arguments,
@@ -818,9 +828,14 @@ function completeAbstractValue(
   path: Array<string | number>,
   result: mixed
 ): mixed {
-  const runtimeType = returnType.resolveType ?
+  let runtimeType = returnType.resolveType ?
     returnType.resolveType(result, exeContext.contextValue, info) :
     defaultResolveTypeFn(result, exeContext.contextValue, info, returnType);
+
+  // If resolveType returns a string, we assume it's a GraphQLObjectType name.
+  if (typeof runtimeType === 'string') {
+    runtimeType = exeContext.schema.getType(runtimeType);
+  }
 
   if (!(runtimeType instanceof GraphQLObjectType)) {
     throw new GraphQLError(
@@ -914,13 +929,16 @@ function defaultResolveTypeFn(
  * If a resolve function is not given, then a default resolve behavior is used
  * which takes the property of the source object of the same name as the field
  * and returns it as the result, or if it's a function, returns the result
- * of calling that function.
+ * of calling that function while passing along args and context.
  */
 function defaultResolveFn(source: any, args, context, { fieldName }) {
   // ensure source is a value for which property access is acceptable.
   if (typeof source === 'object' || typeof source === 'function') {
     const property = source[fieldName];
-    return typeof property === 'function' ? source[fieldName]() : property;
+    if (typeof property === 'function') {
+      return source[fieldName](args, context);
+    }
+    return property;
   }
 }
 
