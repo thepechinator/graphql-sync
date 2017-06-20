@@ -24,7 +24,7 @@
   },
   "scripts": {
     "dist": "babel -d lib/ src/",
-    "prepublish": "npm run dist"
+    "prepublish": "npm run dist && node -e \"require('./test/smoke')\""
   },
   "repository": {
     "type": "git",
