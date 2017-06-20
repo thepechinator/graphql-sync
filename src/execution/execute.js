@@ -80,25 +80,26 @@ import type {
  * Namely, schema of the type system that is currently executing,
  * and the fragments defined in the query document
  */
-type ExecutionContext = {
+export type ExecutionContext = {
   schema: GraphQLSchema;
   fragments: {[key: string]: FragmentDefinitionNode};
   rootValue: mixed;
   contextValue: mixed;
   operation: OperationDefinitionNode;
   variableValues: {[key: string]: mixed};
+  fieldResolver: GraphQLFieldResolver<any, any>;
   errors: Array<GraphQLError>;
 };
 
 /**
  * The result of GraphQL execution.
  *
- *   - `data` is the result of a successful execution of the query.
  *   - `errors` is included when any errors occurred as a non-empty array.
+ *   - `data` is the result of a successful execution of the query.
  */
 export type ExecutionResult = {
-  data?: ?{[key: string]: mixed};
   errors?: Array<GraphQLError>;
+  data?: ?{[key: string]: mixed};
 };
 
 /**
@@ -106,41 +107,93 @@ export type ExecutionResult = {
  *
  * If the arguments to this function do not result in a legal execution context,
  * a GraphQLError will be thrown immediately explaining the invalid input.
+ *
+ * Accepts either an object with named arguments, or individual arguments.
  */
-export function execute(
+declare function execute({|
   schema: GraphQLSchema,
   document: DocumentNode,
   rootValue?: mixed,
   contextValue?: mixed,
   variableValues?: ?{[key: string]: mixed},
-  operationName?: ?string
-): ExecutionResult {
-  invariant(schema, 'Must provide schema');
-  invariant(document, 'Must provide document');
-  invariant(
-    schema instanceof GraphQLSchema,
-    'Schema must be an instance of GraphQLSchema. Also ensure that there are ' +
-    'not multiple versions of GraphQL installed in your node_modules directory.'
-  );
+  operationName?: ?string,
+  fieldResolver?: ?GraphQLFieldResolver<any, any>
+|}, ..._: []): ExecutionResult;
+/* eslint-disable no-redeclare */
+declare function execute(
+  schema: GraphQLSchema,
+  document: DocumentNode,
+  rootValue?: mixed,
+  contextValue?: mixed,
+  variableValues?: ?{[key: string]: mixed},
+  operationName?: ?string,
+  fieldResolver?: ?GraphQLFieldResolver<any, any>
+): ExecutionResult;
+export function execute(
+  argsOrSchema,
+  document,
+  rootValue,
+  contextValue,
+  variableValues,
+  operationName,
+  fieldResolver
+) {
+  // Extract arguments from object args if provided.
+  const args = arguments.length === 1 ? argsOrSchema : undefined;
+  const schema = args ? args.schema : argsOrSchema;
+  return args ?
+    executeImpl(
+      schema,
+      args.document,
+      args.rootValue,
+      args.contextValue,
+      args.variableValues,
+      args.operationName,
+      args.fieldResolver,
+    ) :
+    executeImpl(
+      schema,
+      document,
+      rootValue,
+      contextValue,
+      variableValues,
+      operationName,
+      fieldResolver,
+    );
+}
 
-  // Variables, if provided, must be an object.
-  invariant(
-    !variableValues || typeof variableValues === 'object',
-    'Variables must be provided as an Object where each property is a ' +
-    'variable value. Perhaps look to see if an unparsed JSON string ' +
-    'was provided.'
+function executeImpl(
+  schema,
+  document,
+  rootValue,
+  contextValue,
+  variableValues,
+  operationName,
+  fieldResolver
+) {
+  // If arguments are missing or incorrect, throw an error.
+  assertValidExecutionArguments(
+    schema,
+    document,
+    variableValues
   );
 
   // If a valid context cannot be created due to incorrect arguments,
-  // this will throw an error.
-  const context = buildExecutionContext(
-    schema,
-    document,
-    rootValue,
-    contextValue,
-    variableValues,
-    operationName
-  );
+  // a "Response" with only errors is returned.
+  let context;
+  try {
+    context = buildExecutionContext(
+      schema,
+      document,
+      rootValue,
+      contextValue,
+      variableValues,
+      operationName,
+      fieldResolver
+    );
+  } catch (error) {
+    return { errors: [ error ] };
+  }
 
   // Return the data described by
   // The "Response" section of the GraphQL specification.
@@ -148,20 +201,10 @@ export function execute(
   // If errors are encountered while executing a GraphQL field, only that
   // field and its descendants will be omitted, and sibling fields will still
   // be executed. An execution which encounters errors will still not throw.
-  let data;
-  try {
-    data = executeOperation(context, context.operation, rootValue);
-  } catch (error) {
-    // Errors from sub-fields of a NonNull type may propagate to the top level,
-    // at which point we still log the error and null the parent field, which
-    // in this case is the entire response.
-    context.errors.push(error);
-    data = null;
-  }
-  if (!context.errors.length) {
-    return { data };
-  }
-  return { data, errors: context.errors };
+  const data = executeOperation(context, context.operation, rootValue);
+  return context.errors.length === 0 ?
+    { data } :
+    { errors: context.errors, data };
 }
 
 /**
@@ -180,9 +223,38 @@ export function responsePathAsArray(
   return flattened.reverse();
 }
 
-
-function addPath(prev: ResponsePath, key: string | number) {
+/**
+ * Given a ResponsePath and a key, return a new ResponsePath containing the
+ * new key.
+ */
+export function addPath(prev: ResponsePath, key: string | number) {
   return { prev, key };
+}
+
+/**
+ * Essential assertions before executing to provide developer feedback for
+ * improper use of the GraphQL library.
+ */
+export function assertValidExecutionArguments(
+  schema: GraphQLSchema,
+  document: DocumentNode,
+  rawVariableValues: ?{[key: string]: mixed}
+): void {
+  invariant(schema, 'Must provide schema');
+  invariant(document, 'Must provide document');
+  invariant(
+    schema instanceof GraphQLSchema,
+    'Schema must be an instance of GraphQLSchema. Also ensure that there are ' +
+    'not multiple versions of GraphQL installed in your node_modules directory.'
+  );
+
+  // Variables, if provided, must be an object.
+  invariant(
+    !rawVariableValues || typeof rawVariableValues === 'object',
+    'Variables must be provided as an Object where each property is a ' +
+    'variable value. Perhaps look to see if an unparsed JSON string ' +
+    'was provided.'
+  );
 }
 
 /**
@@ -191,13 +263,14 @@ function addPath(prev: ResponsePath, key: string | number) {
  *
  * Throws a GraphQLError if a valid execution context cannot be created.
  */
-function buildExecutionContext(
+export function buildExecutionContext(
   schema: GraphQLSchema,
   document: DocumentNode,
   rootValue: mixed,
   contextValue: mixed,
   rawVariableValues: ?{[key: string]: mixed},
-  operationName: ?string
+  operationName: ?string,
+  fieldResolver: ?GraphQLFieldResolver<any, any>
 ): ExecutionContext {
   const errors: Array<GraphQLError> = [];
   let operation: ?OperationDefinitionNode;
@@ -245,7 +318,8 @@ function buildExecutionContext(
     contextValue,
     operation,
     variableValues,
-    errors
+    fieldResolver: fieldResolver || defaultFieldResolver,
+    errors,
   };
 }
 
@@ -256,7 +330,7 @@ function executeOperation(
   exeContext: ExecutionContext,
   operation: OperationDefinitionNode,
   rootValue: mixed
-): {[key: string]: mixed} {
+): ?{[key: string]: mixed} {
   const type = getOperationRootType(exeContext.schema, operation);
   const fields = collectFields(
     exeContext,
@@ -268,16 +342,26 @@ function executeOperation(
 
   const path = undefined;
 
-  if (operation.operation === 'mutation') {
-    return executeFieldsSerially(exeContext, type, rootValue, path, fields);
+  // Errors from sub-fields of a NonNull type may propagate to the top level,
+  // at which point we still log the error and null the parent field, which
+  // in this case is the entire response.
+  //
+  // Similar to completeValueCatchingError.
+  try {
+    const result = operation.operation === 'mutation' ?
+      executeFieldsSerially(exeContext, type, rootValue, path, fields) :
+      executeFields(exeContext, type, rootValue, path, fields);
+    return result;
+  } catch (error) {
+    exeContext.errors.push(error);
+    return null;
   }
-  return executeFields(exeContext, type, rootValue, path, fields);
 }
 
 /**
  * Extracts the root type of the operation from the schema.
  */
-function getOperationRootType(
+export function getOperationRootType(
   schema: GraphQLSchema,
   operation: OperationDefinitionNode
 ): GraphQLObjectType {
@@ -384,7 +468,7 @@ function executeFields(
  * returns an Interface or Union type, the "runtime type" will be the actual
  * Object type returned by that field.
  */
-function collectFields(
+export function collectFields(
   exeContext: ExecutionContext,
   runtimeType: GraphQLObjectType,
   selectionSet: SelectionSetNode,
@@ -533,20 +617,50 @@ function resolveField(
     return;
   }
 
-  const returnType = fieldDef.type;
-  const resolveFn = fieldDef.resolve || defaultFieldResolver;
+  const resolveFn = fieldDef.resolve || exeContext.fieldResolver;
 
-  // The resolve function's optional third argument is a context value that
-  // is provided to every resolve function within an execution. It is commonly
-  // used to represent an authenticated user, or request-specific caches.
-  const context = exeContext.contextValue;
+  const info = buildResolveInfo(
+    exeContext,
+    fieldDef,
+    fieldNodes,
+    parentType,
+    path
+  );
 
+  // Get the resolve function, regardless of if its result is normal
+  // or abrupt (error).
+  const result = resolveFieldValueOrError(
+    exeContext,
+    fieldDef,
+    fieldNodes,
+    resolveFn,
+    source,
+    info
+  );
+
+  return completeValueCatchingError(
+    exeContext,
+    fieldDef.type,
+    fieldNodes,
+    info,
+    path,
+    result
+  );
+}
+
+export function buildResolveInfo(
+  exeContext: ExecutionContext,
+  fieldDef: GraphQLField<*, *>,
+  fieldNodes: Array<FieldNode>,
+  parentType: GraphQLObjectType,
+  path: ResponsePath
+): GraphQLResolveInfo {
   // The resolve function's optional fourth argument is a collection of
   // information about the current execution state.
-  const info: GraphQLResolveInfo = {
-    fieldName,
+  return {
+    fieldName: fieldNodes[0].name.value,
     fieldNodes,
-    returnType,
+    returnType: fieldDef.type,
     parentType,
     path,
     schema: exeContext.schema,
@@ -555,38 +669,16 @@ function resolveField(
     operation: exeContext.operation,
     variableValues: exeContext.variableValues,
   };
-
-  // Get the resolve function, regardless of if its result is normal
-  // or abrupt (error).
-  const result = resolveOrError(
-    exeContext,
-    fieldDef,
-    fieldNode,
-    resolveFn,
-    source,
-    context,
-    info
-  );
-
-  return completeValueCatchingError(
-    exeContext,
-    returnType,
-    fieldNodes,
-    info,
-    path,
-    result
-  );
 }
 
 // Isolates the "ReturnOrAbrupt" behavior to not de-opt the `resolveField`
 // function. Returns the result of resolveFn or the abrupt-return Error object.
-function resolveOrError<TSource, TContext>(
+export function resolveFieldValueOrError<TSource>(
   exeContext: ExecutionContext,
-  fieldDef: GraphQLField<TSource, TContext>,
-  fieldNode: FieldNode,
-  resolveFn: GraphQLFieldResolver<TSource, TContext>,
+  fieldDef: GraphQLField<TSource, *>,
+  fieldNodes: Array<FieldNode>,
+  resolveFn: GraphQLFieldResolver<TSource, *>,
   source: TSource,
-  context: TContext,
   info: GraphQLResolveInfo
 ): Error | mixed {
   try {
@@ -595,9 +687,14 @@ function resolveOrError<TSource, TContext>(
     // TODO: find a way to memoize, in case this field is within a List type.
     const args = getArgumentValues(
       fieldDef,
-      fieldNode,
+      fieldNodes[0],
       exeContext.variableValues
     );
+
+    // The resolve function's optional third argument is a context value that
+    // is provided to every resolve function within an execution. It is commonly
+    // used to represent an authenticated user, or request-specific caches.
+    const context = exeContext.contextValue;
 
     return resolveFn(source, args, context, info);
   } catch (error) {
@@ -1026,7 +1123,7 @@ function (source, args, context, info) {
  * added to the query type, but that would require mutating type
  * definitions, which would cause issues.
  */
-function getFieldDef(
+export function getFieldDef(
   schema: GraphQLSchema,
   parentType: GraphQLObjectType,
   fieldName: string
