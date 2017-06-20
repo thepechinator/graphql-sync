@@ -18,14 +18,11 @@ import { typeFromAST } from 'graphql/utilities/typeFromAST';
 import * as Kind from 'graphql/language/kinds';
 import { getVariableValues, getArgumentValues } from './values';
 import {
-  GraphQLScalarType,
   GraphQLObjectType,
-  GraphQLEnumType,
   GraphQLList,
   GraphQLNonNull,
-  GraphQLInterfaceType,
-  GraphQLUnionType,
-  isAbstractType
+  isAbstractType,
+  isLeafType,
 } from 'graphql/type/definition';
 import type {
   GraphQLType,
@@ -119,6 +116,7 @@ export function execute(
   operationName?: ?string
 ): ExecutionResult {
   invariant(schema, 'Must provide schema');
+  invariant(document, 'Must provide document');
   invariant(
     schema instanceof GraphQLSchema,
     'Schema must be an instance of GraphQLSchema. Also ensure that there are ' +
@@ -383,7 +381,7 @@ function executeFields(
  * the passed in map of fields, and returns it at the end.
  *
  * CollectFields requires the "runtime type" of an object. For a field which
- * returns and Interface or Union type, the "runtime type" will be the actual
+ * returns an Interface or Union type, the "runtime type" will be the actual
  * Object type returned by that field.
  */
 function collectFields(
@@ -502,8 +500,7 @@ function doesFragmentConditionMatch(
     return true;
   }
   if (isAbstractType(conditionalType)) {
-    const abstractType = ((conditionalType: any): GraphQLAbstractType);
-    return exeContext.schema.isPossibleType(abstractType, type);
+    return exeContext.schema.isPossibleType(conditionalType, type);
   }
   return false;
 }
@@ -751,15 +748,13 @@ function completeValue(
 
   // If field type is a leaf type, Scalar or Enum, serialize to a valid value,
   // returning null if serialization is not possible.
-  if (returnType instanceof GraphQLScalarType ||
-      returnType instanceof GraphQLEnumType) {
+  if (isLeafType(returnType)) {
     return completeLeafValue(returnType, result);
   }
 
   // If field type is an abstract type, Interface or Union, determine the
   // runtime Object type and complete for that type.
-  if (returnType instanceof GraphQLInterfaceType ||
-      returnType instanceof GraphQLUnionType) {
+  if (isAbstractType(returnType)) {
     return completeAbstractValue(
       exeContext,
       returnType,
@@ -858,14 +853,38 @@ function completeAbstractValue(
   path: ResponsePath,
   result: mixed
 ): mixed {
-  let runtimeType = returnType.resolveType ?
+  const runtimeType = returnType.resolveType ?
     returnType.resolveType(result, exeContext.contextValue, info) :
     defaultResolveTypeFn(result, exeContext.contextValue, info, returnType);
 
-  // If resolveType returns a string, we assume it's a GraphQLObjectType name.
-  if (typeof runtimeType === 'string') {
-    runtimeType = exeContext.schema.getType(runtimeType);
-  }
+  return completeObjectValue(
+    exeContext,
+    ensureValidRuntimeType(
+      ((runtimeType: any): ?GraphQLObjectType | string),
+      exeContext,
+      returnType,
+      fieldNodes,
+      info,
+      result
+    ),
+    fieldNodes,
+    info,
+    path,
+    result
+  );
+}
+
+function ensureValidRuntimeType(
+  runtimeTypeOrName: ?GraphQLObjectType | string,
+  exeContext: ExecutionContext,
+  returnType: GraphQLAbstractType,
+  fieldNodes: Array<FieldNode>,
+  info: GraphQLResolveInfo,
+  result: mixed
+): GraphQLObjectType {
+  const runtimeType = typeof runtimeTypeOrName === 'string' ?
+    exeContext.schema.getType(runtimeTypeOrName) :
+    runtimeTypeOrName;
 
   if (!(runtimeType instanceof GraphQLObjectType)) {
     throw new GraphQLError(
@@ -884,14 +903,7 @@ function completeAbstractValue(
     );
   }
 
-  return completeObjectValue(
-    exeContext,
-    runtimeType,
-    fieldNodes,
-    info,
-    path,
-    result
-  );
+  return runtimeType;
 }
 
 /**
@@ -908,14 +920,42 @@ function completeObjectValue(
   // If there is an isTypeOf predicate function, call it with the
   // current result. If isTypeOf returns false, then raise an error rather
   // than continuing execution.
-  if (returnType.isTypeOf &&
-      !returnType.isTypeOf(result, exeContext.contextValue, info)) {
-    throw new GraphQLError(
-      `Expected value of type "${returnType.name}" but got: ${String(result)}.`,
-      fieldNodes
-    );
+  if (returnType.isTypeOf) {
+    const isTypeOf = returnType.isTypeOf(result, exeContext.contextValue, info);
+    if (!isTypeOf) {
+      throw invalidReturnTypeError(returnType, result, fieldNodes);
+    }
   }
 
+  return collectAndExecuteSubfields(
+    exeContext,
+    returnType,
+    fieldNodes,
+    info,
+    path,
+    result
+  );
+}
+
+function invalidReturnTypeError(
+  returnType: GraphQLObjectType,
+  result: mixed,
+  fieldNodes: Array<FieldNode>
+): GraphQLError {
+  return new GraphQLError(
+    `Expected value of type "${returnType.name}" but got: ${String(result)}.`,
+    fieldNodes
+  );
+}
+
+function collectAndExecuteSubfields(
+  exeContext: ExecutionContext,
+  returnType: GraphQLObjectType,
+  fieldNodes: Array<FieldNode>,
+  info: GraphQLResolveInfo,
+  path: ResponsePath,
+  result: mixed
+): mixed {
   // Collect sub-fields to execute to complete this value.
   let subFieldNodes = Object.create(null);
   const visitedFragmentNames = Object.create(null);
@@ -949,8 +989,12 @@ function defaultResolveTypeFn(
   const possibleTypes = info.schema.getPossibleTypes(abstractType);
   for (let i = 0; i < possibleTypes.length; i++) {
     const type = possibleTypes[i];
-    if (type.isTypeOf && type.isTypeOf(value, context, info)) {
-      return type;
+
+    if (type.isTypeOf) {
+      const isTypeOfResult = type.isTypeOf(value, context, info);
+      if (isTypeOfResult) {
+        return type;
+      }
     }
   }
 }
@@ -962,12 +1006,12 @@ function defaultResolveTypeFn(
  * of calling that function while passing along args and context.
  */
 export const defaultFieldResolver: GraphQLFieldResolver<any, *> =
-function (source, args, context, { fieldName }) {
+function (source, args, context, info) {
   // ensure source is a value for which property access is acceptable.
   if (typeof source === 'object' || typeof source === 'function') {
-    const property = source[fieldName];
+    const property = source[info.fieldName];
     if (typeof property === 'function') {
-      return source[fieldName](args, context);
+      return source[info.fieldName](args, context, info);
     }
     return property;
   }
