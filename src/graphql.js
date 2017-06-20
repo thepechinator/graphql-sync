@@ -12,8 +12,8 @@ import { Source } from 'graphql/language/source';
 import { parse } from 'graphql/language/parser';
 import { validate } from 'graphql/validation/validate';
 import { execute } from './execution/execute';
-import type { GraphQLError } from 'graphql/error/GraphQLError';
 import type { GraphQLSchema } from 'graphql/type/schema';
+import type { ExecutionResult } from 'graphql/execution/execute';
 
 
 /**
@@ -47,7 +47,7 @@ export function graphql(
   contextValue?: mixed,
   variableValues?: ?{[key: string]: mixed},
   operationName?: ?string
-): GraphQLResult {
+): ExecutionResult {
   try {
     const source = new Source(requestString || '', 'GraphQL request');
     const documentAST = parse(source);
@@ -66,15 +66,4 @@ export function graphql(
   } catch (error) {
     return { errors: [ error ] };
   }
-}
-
-/**
- * The result of a GraphQL parse, validation and execution.
- *
- * `data` is the result of a successful execution of the query.
- * `errors` is included when any errors occurred as a non-empty array.
- */
-type GraphQLResult = {
-  data?: ?Object;
-  errors?: Array<GraphQLError>;
 }
