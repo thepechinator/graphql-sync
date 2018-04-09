@@ -93,5 +93,5 @@ console.log(result);
 
 ### License
 
-GraphQL is [BSD-licensed](https://github.com/graphql/graphql-js/blob/master/LICENSE).
-Facebook also provides an additional [patent grant](https://github.com/graphql/graphql-js/blob/master/PATENTS).
+GraphQL is [BSD-licensed](https://github.com/graphql/graphql-js/blob/v0.10.3/LICENSE).
+Facebook also provides an additional [patent grant](https://github.com/graphql/graphql-js/blob/v0.10.3/PATENTS).
