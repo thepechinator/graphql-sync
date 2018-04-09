@@ -2,6 +2,8 @@
 
 This is a promise-free wrapper of [GraphQL.js](https://github.com/graphql/graphql-js) for [ArangoDB](https://www.arangodb.com) that replaces all asynchronous code with synchronous equivalents.
 
+**Note**: Looking for GraphQL 0.12 and later? [GraphQL.js now can be used synchronously](https://github.com/graphql/graphql-js/releases/tag/v0.12.0). Just add `graphql` as a node dependency of your service and use it directly. Note that you'll need to use the `graphqlSync` method instead of the `graphql` method in the examples below.
+
 ## Getting Started
 
 An overview of GraphQL in general is available in the
@@ -13,6 +15,8 @@ An overview of GraphQL in general is available in the
 You can use GraphQL-sync in [ArangoDB](https://www.arangdb.com) to build your own GraphQL endpoints directly inside the database using the [Foxx](https://www.arangodb.com/foxx) framework.
 
 An example Foxx service using GraphQL-sync is available as [demo-graphql](https://github.com/arangodb-foxx/demo-graphql) in the Foxx service store. You can find out more about using GraphQL with Foxx in the ArangoDB blog article [*Using GraphQL with NoSQL database ArangoDB*](https://www.arangodb.com/2016/02/using-graphql-nosql-database-arangodb/).
+
+Starting with ArangoDB 3.2 you can use the [Foxx GraphQL integration](https://docs.arangodb.com/3.2/Manual/Foxx/GraphQL.html) with your own copy of `graphql-sync` (or `graphql` 0.12 and later).
 
 ### Using GraphQL-sync
 
