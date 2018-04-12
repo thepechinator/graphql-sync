@@ -16,7 +16,7 @@ You can use GraphQL-sync in [ArangoDB](https://www.arangdb.com) to build your ow
 
 An example Foxx service using GraphQL-sync is available as [demo-graphql](https://github.com/arangodb-foxx/demo-graphql) in the Foxx service store. You can find out more about using GraphQL with Foxx in the ArangoDB blog article [*Using GraphQL with NoSQL database ArangoDB*](https://www.arangodb.com/2016/02/using-graphql-nosql-database-arangodb/).
 
-Starting with ArangoDB 3.2 you can use the [Foxx GraphQL integration](https://docs.arangodb.com/3.2/Manual/Foxx/GraphQL.html) with your own copy of `graphql-sync` (or `graphql` 0.12 and later).
+Starting with ArangoDB 3.2 you can use the [Foxx GraphQL integration](https://docs.arangodb.com/3.2/Manual/Foxx/GraphQL.html) with your own copy of `graphql-sync` (or `graphql` 0.12 and later). Make sure to pass your copy of the module via the `graphql` argument.
 
 ### Using GraphQL-sync
 
